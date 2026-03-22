@@ -62,7 +62,25 @@ Run these SQL files in Supabase:
 
 If you are starting from a clean database and run the current `schema.sql`, it already includes the session function. Running `submit-session-function.sql` separately is mainly useful when updating an older setup.
 
+If you already have an existing database and want inline participant creation from the submission form, run `supabase/get-or-create-participant-function.sql` once.
+
 If you already have an older challenge table in Supabase, run `supabase/add-challenge-week-number.sql` once before reseeding so each challenge stores its `week_number`.
+
+## Weekly Data Model
+
+Weekly separation already exists in the schema:
+
+- `sessions.challenge_id` links every session to exactly one challenge
+- `challenges.week_number` identifies the week
+- `challenges.start_at` and `challenges.end_at` define the valid time window
+
+That means you do not need a duplicate `week_number` column on `sessions`. The week is derived by joining each session to its challenge.
+
+## Resetting And Starting Fresh
+
+- Run `supabase/reset-all-data.sql` to wipe all participants, challenges, sessions, and sets
+- Run `supabase/first-challenge.sql` if you want the original starter seed again
+- Use `supabase/new-challenge-template.sql` as the template for creating the next weekly challenge row
 
 ## Project Structure
 

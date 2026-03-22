@@ -15,12 +15,15 @@ import {
 import type {
   BestSetEntry,
   ChallengeBundle,
+  Participant,
   Session,
   TotalLeaderboardEntry,
 } from "@/lib/types";
 import {
+  MAX_PARTICIPANT_NAME_LENGTH,
   MAX_REPS_PER_SET,
   MAX_SETS_PER_SESSION,
+  normalizeParticipantDisplayName,
 } from "@/lib/session-submission";
 
 type ChallengeShellProps = {
@@ -37,6 +40,8 @@ type FlashMessage = {
   text: string;
 } | null;
 
+const NEW_PARTICIPANT_VALUE = "__new__";
+
 function buildDraftSet(id: string, reps = ""): SetDraft {
   return { id, reps };
 }
@@ -45,12 +50,54 @@ function sanitizeRepsInput(value: string) {
   return value.replace(/\D/g, "").slice(0, 3);
 }
 
+function sortParticipantsByName(participants: Participant[]) {
+  return [...participants].sort((left, right) =>
+    left.displayName.localeCompare(right.displayName),
+  );
+}
+
+function formatChallengeOptionDate(value: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "America/New_York",
+  }).format(new Date(value));
+}
+
+function getStatusLabel(status: "upcoming" | "active" | "ended") {
+  if (status === "upcoming") {
+    return "Upcoming";
+  }
+
+  if (status === "ended") {
+    return "Final";
+  }
+
+  return "Live";
+}
+
+function getStatusClasses(status: "upcoming" | "active" | "ended") {
+  if (status === "upcoming") {
+    return "border-sky-200 bg-sky-50 text-sky-900";
+  }
+
+  if (status === "ended") {
+    return "border-slate-200 bg-slate-100 text-slate-800";
+  }
+
+  return "border-emerald-200 bg-emerald-50 text-emerald-900";
+}
+
 export function ChallengeShell({ bundle }: ChallengeShellProps) {
   const draftCountRef = useRef(3);
   const lastTouchActionRef = useRef(0);
   const router = useRouter();
   const [isClientReady, setIsClientReady] = useState(false);
-  const [participantId, setParticipantId] = useState("");
+  const [participants, setParticipants] = useState(() =>
+    sortParticipantsByName(bundle.participants),
+  );
+  const [participantSelection, setParticipantSelection] = useState("");
+  const [newParticipantName, setNewParticipantName] = useState("");
   const [setDrafts, setSetDrafts] = useState<SetDraft[]>([buildDraftSet("draft-1", "")]);
   const [sessions, setSessions] = useState<Session[]>(bundle.sessions);
   const [flash, setFlash] = useState<FlashMessage>(null);
@@ -62,19 +109,31 @@ export function ChallengeShell({ bundle }: ChallengeShellProps) {
     setCurrentTime(new Date());
   }, []);
 
+  useEffect(() => {
+    setParticipants(sortParticipantsByName(bundle.participants));
+    setSessions(bundle.sessions);
+    setFlash(null);
+    setIsSubmitting(false);
+    setParticipantSelection("");
+    setNewParticipantName("");
+    setSetDrafts([buildDraftSet("draft-1", "")]);
+    draftCountRef.current = 2;
+  }, [bundle.challenge.id, bundle.participants, bundle.sessions]);
+
   if (!isClientReady) {
     return <ChallengeShellSkeleton />;
   }
 
   const challengeStatus = getChallengeStatus(bundle.challenge, currentTime);
+  const challengeStartsAt = formatDateTime(bundle.challenge.startAt);
   const challengeEndsAt = formatChallengeEnd(bundle.challenge);
   const countdownLabel = getCountdownDaysAndHours(bundle.challenge, currentTime);
-  const activeParticipants = bundle.participants.filter(
+  const activeParticipants = participants.filter(
     (participant) => participant.isActive,
   );
-  const totalLeaderboard = buildTotalLeaderboard(bundle.participants, sessions);
-  const bestSetLeaderboard = buildBestSetLeaderboard(bundle.participants, sessions);
-  const recentSessions = buildSessionFeed(bundle.participants, sessions).slice(0, 5);
+  const totalLeaderboard = buildTotalLeaderboard(participants, sessions);
+  const bestSetLeaderboard = buildBestSetLeaderboard(participants, sessions);
+  const recentSessions = buildSessionFeed(participants, sessions).slice(0, 5);
   const previewReps = setDrafts.reduce((sum, draft) => {
     const reps = Number.parseInt(draft.reps, 10);
     return Number.isFinite(reps) && reps > 0 ? sum + reps : sum;
@@ -83,7 +142,14 @@ export function ChallengeShell({ bundle }: ChallengeShellProps) {
     const reps = Number.parseInt(draft.reps, 10);
     return Number.isFinite(reps) && reps > 0;
   }).length;
-  const canSubmit = challengeStatus === "active" && activeParticipants.length > 0;
+  const canSubmit = challengeStatus === "active";
+  const isCreatingParticipant = participantSelection === NEW_PARTICIPANT_VALUE;
+  const submissionStatusMessage =
+    challengeStatus === "upcoming"
+      ? `This challenge has not started yet. Session logging opens ${challengeStartsAt}.`
+      : challengeStatus === "ended"
+        ? `This challenge has ended. Session logging closed ${challengeEndsAt}.`
+        : null;
 
   function addSetDraft() {
     const nextId = `draft-${draftCountRef.current}`;
@@ -134,8 +200,31 @@ export function ChallengeShell({ bundle }: ChallengeShellProps) {
 
   function resetDrafts() {
     draftCountRef.current = 2;
-    setParticipantId("");
+    setParticipantSelection("");
+    setNewParticipantName("");
     setSetDrafts([buildDraftSet("draft-1", "")]);
+  }
+
+  function updateParticipantSelection(value: string) {
+    setParticipantSelection(value);
+
+    if (value !== NEW_PARTICIPANT_VALUE) {
+      setNewParticipantName("");
+    }
+  }
+
+  function updateNewParticipantName(value: string) {
+    setNewParticipantName(value.slice(0, MAX_PARTICIPANT_NAME_LENGTH));
+  }
+
+  function handleChallengeSelection(nextSlug: string) {
+    if (!nextSlug || nextSlug === bundle.challenge.slug) {
+      return;
+    }
+
+    startTransition(() => {
+      router.push(`/challenges/${nextSlug}`);
+    });
   }
 
   function handleResetAction() {
@@ -162,15 +251,30 @@ export function ChallengeShell({ bundle }: ChallengeShellProps) {
     if (challengeStatus !== "active") {
       setFlash({
         tone: "error",
-        text: "This challenge is not accepting submissions right now.",
+        text:
+          challengeStatus === "upcoming"
+            ? `This challenge has not started yet. Session logging opens ${challengeStartsAt}.`
+            : `This challenge has ended. Session logging closed ${challengeEndsAt}.`,
       });
       return;
     }
 
-    if (!participantId) {
+    if (!participantSelection) {
       setFlash({
         tone: "error",
-        text: "Pick a participant before submitting a session.",
+        text: "Pick an existing participant or choose New participant.",
+      });
+      return;
+    }
+
+    const normalizedNewParticipantName = normalizeParticipantDisplayName(
+      newParticipantName,
+    );
+
+    if (isCreatingParticipant && !normalizedNewParticipantName) {
+      setFlash({
+        tone: "error",
+        text: "Enter a participant name before submitting a session.",
       });
       return;
     }
@@ -209,15 +313,22 @@ export function ChallengeShell({ bundle }: ChallengeShellProps) {
         },
         body: JSON.stringify({
           challengeId: bundle.challenge.id,
-          participantId,
+          participantId:
+            participantSelection === NEW_PARTICIPANT_VALUE
+              ? undefined
+              : participantSelection,
+          newParticipantName:
+            participantSelection === NEW_PARTICIPANT_VALUE
+              ? normalizedNewParticipantName
+              : undefined,
           sets: parsedSets,
         }),
       });
       const payload = (await response.json()) as
-        | { error?: string; session?: Session }
+        | { error?: string; participant?: Participant; session?: Session }
         | undefined;
 
-      if (!response.ok || !payload?.session) {
+      if (!response.ok || !payload?.session || !payload.participant) {
         setFlash({
           tone: "error",
           text: payload?.error ?? "The session could not be saved.",
@@ -225,15 +336,23 @@ export function ChallengeShell({ bundle }: ChallengeShellProps) {
         return;
       }
 
-      const participantName =
-        bundle.participants.find((participant) => participant.id === participantId)
-          ?.displayName ?? "Participant";
+      setParticipants((current) => {
+        const hasParticipant = current.some(
+          (participant) => participant.id === payload.participant!.id,
+        );
+
+        if (hasParticipant) {
+          return current;
+        }
+
+        return sortParticipantsByName([...current, payload.participant!]);
+      });
 
       setSessions((current) => [...current, payload.session!]);
       resetDrafts();
       setFlash({
         tone: "success",
-        text: `${participantName} logged ${getSessionTotal(payload.session)} pushups across ${payload.session.sets.length} sets.`,
+        text: `${payload.participant.displayName} logged ${getSessionTotal(payload.session)} pushups across ${payload.session.sets.length} sets.`,
       });
       startTransition(() => {
         router.refresh();
@@ -257,16 +376,53 @@ export function ChallengeShell({ bundle }: ChallengeShellProps) {
         />
         <div className="relative space-y-5">
           <div className="space-y-4">
-            <div className="space-y-1.5">
-              <p className="font-[family-name:var(--font-heading)] text-4xl leading-none tracking-[0.02em] text-[var(--accent-deep)] sm:text-6xl">
-                Pushup Challenge
-              </p>
-              <p className="max-w-2xl text-sm leading-5 text-[var(--muted)] sm:text-base">
-                Week {bundle.challenge.weekNumber}. Log sessions and climb the leaderboard.
-              </p>
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${getStatusClasses(challengeStatus)}`}
+                  >
+                    {getStatusLabel(challengeStatus)}
+                  </span>
+                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                    Week {bundle.challenge.weekNumber}
+                  </span>
+                </div>
+                <div className="space-y-1.5">
+                  <p className="font-[family-name:var(--font-heading)] text-4xl leading-none tracking-[0.02em] text-[var(--accent-deep)] sm:text-6xl">
+                    {bundle.challenge.title}
+                  </p>
+                  <p className="max-w-2xl text-sm leading-5 text-[var(--muted)] sm:text-base">
+                    {challengeStatus === "ended"
+                      ? "Viewing the final standings for this completed challenge."
+                      : "Log sessions and climb the leaderboard."}
+                  </p>
+                </div>
+              </div>
+
+              <label className="grid gap-2 lg:min-w-[18rem]">
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                  Challenge
+                </span>
+                <select
+                  className="rounded-2xl border border-[var(--line-strong)] bg-white px-4 py-3 text-sm font-semibold text-[var(--foreground)] outline-none transition focus:border-[var(--accent)]"
+                  onChange={(event) => handleChallengeSelection(event.target.value)}
+                  value={bundle.challenge.slug}
+                >
+                  {bundle.challenges.map((challenge) => (
+                    <option key={challenge.id} value={challenge.slug}>
+                      {`Week ${challenge.weekNumber} • ${formatChallengeOptionDate(challenge.startAt)}-${formatChallengeOptionDate(challenge.endAt)}`}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
 
-            <div className="grid gap-2">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <StatTile
+                label="Starts"
+                value={challengeStartsAt}
+              />
               <StatTile
                 label="Ends"
                 value={`${challengeEndsAt} • ${countdownLabel}`}
@@ -312,133 +468,98 @@ export function ChallengeShell({ bundle }: ChallengeShellProps) {
           description="Pick a name, enter each set from the workout, and submit the whole session at once."
         >
           <form className="space-y-5" onSubmit={handleSubmit}>
+            <label className="grid gap-2">
+              <span className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--muted)]">
+                Participant
+              </span>
+              <select
+                className="rounded-2xl border border-[var(--line-strong)] bg-white px-4 py-3.5 text-base outline-none transition focus:border-[var(--accent)]"
+                disabled={isSubmitting}
+                onChange={(event) => updateParticipantSelection(event.target.value)}
+                value={participantSelection}
+              >
+                <option value="">Select participant</option>
+                {activeParticipants.map((participant) => (
+                  <option key={participant.id} value={participant.id}>
+                    {participant.displayName}
+                  </option>
+                ))}
+                <option value={NEW_PARTICIPANT_VALUE}>New participant</option>
+              </select>
+            </label>
+
+            {isCreatingParticipant ? (
               <label className="grid gap-2">
                 <span className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--muted)]">
-                  Participant
+                  New participant name
                 </span>
-                <select
+                <input
                   className="rounded-2xl border border-[var(--line-strong)] bg-white px-4 py-3.5 text-base outline-none transition focus:border-[var(--accent)]"
-                  disabled={activeParticipants.length === 0 || isSubmitting}
-                  onChange={(event) => setParticipantId(event.target.value)}
-                  value={participantId}
-                >
-                  <option value="">Select participant</option>
-                  {activeParticipants.length > 0 ? (
-                    activeParticipants.map((participant) => (
-                      <option key={participant.id} value={participant.id}>
-                        {participant.displayName}
-                      </option>
-                    ))
-                  ) : (
-                    <option value="">No participants yet</option>
-                  )}
-                </select>
-              </label>
-
-              {activeParticipants.length === 0 ? (
-                <EmptyBlock text="No active participants have been created yet. Add participants in Supabase before accepting submissions." />
-              ) : null}
-
-              <div className="rounded-[1.5rem] border border-[var(--line)] bg-white/70 p-4">
-                <div className="space-y-1">
-                  <p className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--muted)]">
-                    Sets
-                  </p>
-                  <p className="text-sm text-[var(--muted)]">Add each set below.</p>
-                </div>
-
-                <div className="mt-3 grid gap-2">
-                  {setDrafts.map((draft, index) => (
-                    <div
-                      className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2"
-                      key={draft.id}
-                    >
-                      <span className="text-sm font-medium text-[var(--muted)]">
-                        Set {index + 1}
-                      </span>
-                      <input
-                        className="w-full rounded-xl border border-[var(--line-strong)] bg-white px-3 py-2.5 text-base font-semibold outline-none transition focus:border-[var(--accent)]"
-                        disabled={isSubmitting}
-                        enterKeyHint="next"
-                        inputMode="numeric"
-                        maxLength={3}
-                        onChange={(event) => updateSetDraft(draft.id, event.target.value)}
-                        onInput={(event) =>
-                          updateSetDraft(
-                            draft.id,
-                            (event.currentTarget as HTMLInputElement).value,
-                          )
-                        }
-                        pattern="[0-9]*"
-                        placeholder="Reps"
-                        type="text"
-                        value={draft.reps}
-                      />
-                      <button
-                        className="rounded-xl border border-[var(--line)] px-3 py-2.5 text-sm font-semibold text-[var(--muted)] transition hover:border-[var(--accent)] hover:text-[var(--accent-deep)] disabled:cursor-not-allowed disabled:opacity-40"
-                        disabled={isSubmitting || setDrafts.length === 1}
-                        onClick={() => removeSetDraft(draft.id)}
-                        type="button"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-3">
-                  <button
-                    className="relative z-10 w-full touch-manipulation rounded-xl border border-dashed border-[var(--line-strong)] px-3 py-2.5 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--accent)] hover:text-[var(--accent-deep)] disabled:cursor-not-allowed disabled:opacity-45"
-                    disabled={isSubmitting || setDrafts.length >= MAX_SETS_PER_SESSION}
-                    onClick={(event) => {
-                      event.preventDefault();
-
-                      if (Date.now() - lastTouchActionRef.current < 500) {
-                        return;
-                      }
-
-                      if (isSubmitting || setDrafts.length >= MAX_SETS_PER_SESSION) {
-                        return;
-                      }
-
-                      handleAddSetAction();
-                    }}
-                    onTouchStart={handleAddSetTouchStart}
-                    type="button"
-                  >
-                    Add set
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between gap-4 rounded-[1.25rem] border border-[var(--line)] bg-[var(--panel-strong)] px-4 py-3">
-                <InlineSummaryStat label="Sets" value={`${previewSetCount}`} />
-                <InlineSummaryStat label="Total reps" value={`${previewReps}`} />
-              </div>
-
-              {flash ? (
-                <div
-                  className={`rounded-2xl border px-4 py-3 text-sm ${
-                    flash.tone === "success"
-                      ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-                      : "border-rose-200 bg-rose-50 text-rose-900"
-                  }`}
-                >
-                  {flash.text}
-                </div>
-              ) : null}
-
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <button
-                  className="w-full rounded-full bg-[var(--accent)] px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-[var(--accent-deep)] disabled:cursor-not-allowed disabled:opacity-45 sm:w-auto"
-                  disabled={!canSubmit || isSubmitting}
-                  type="submit"
-                >
-                  {isSubmitting ? "Saving..." : "Submit session"}
-                </button>
-                <button
-                  className="w-full touch-manipulation rounded-full border border-[var(--line-strong)] px-5 py-3.5 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--accent)] hover:text-[var(--accent-deep)] sm:w-auto"
                   disabled={isSubmitting}
+                  maxLength={MAX_PARTICIPANT_NAME_LENGTH}
+                  onChange={(event) => updateNewParticipantName(event.target.value)}
+                  placeholder="Enter name"
+                  type="text"
+                  value={newParticipantName}
+                />
+              </label>
+            ) : null}
+
+            {activeParticipants.length === 0 ? (
+              <EmptyBlock text="No active participants exist yet. Choose New participant to create the first one while submitting." />
+            ) : null}
+
+            <div className="rounded-[1.5rem] border border-[var(--line)] bg-white/70 p-4">
+              <div className="space-y-1">
+                <p className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--muted)]">
+                  Sets
+                </p>
+                <p className="text-sm text-[var(--muted)]">Add each set below.</p>
+              </div>
+
+              <div className="mt-3 grid gap-2">
+                {setDrafts.map((draft, index) => (
+                  <div
+                    className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2"
+                    key={draft.id}
+                  >
+                    <span className="text-sm font-medium text-[var(--muted)]">
+                      Set {index + 1}
+                    </span>
+                    <input
+                      className="w-full rounded-xl border border-[var(--line-strong)] bg-white px-3 py-2.5 text-base font-semibold outline-none transition focus:border-[var(--accent)]"
+                      disabled={isSubmitting}
+                      enterKeyHint="next"
+                      inputMode="numeric"
+                      maxLength={3}
+                      onChange={(event) => updateSetDraft(draft.id, event.target.value)}
+                      onInput={(event) =>
+                        updateSetDraft(
+                          draft.id,
+                          (event.currentTarget as HTMLInputElement).value,
+                        )
+                      }
+                      pattern="[0-9]*"
+                      placeholder="Reps"
+                      type="text"
+                      value={draft.reps}
+                    />
+                    <button
+                      className="rounded-xl border border-[var(--line)] px-3 py-2.5 text-sm font-semibold text-[var(--muted)] transition hover:border-[var(--accent)] hover:text-[var(--accent-deep)] disabled:cursor-not-allowed disabled:opacity-40"
+                      disabled={isSubmitting || setDrafts.length === 1}
+                      onClick={() => removeSetDraft(draft.id)}
+                      type="button"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-3">
+                <button
+                  className="relative z-10 w-full touch-manipulation rounded-xl border border-dashed border-[var(--line-strong)] px-3 py-2.5 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--accent)] hover:text-[var(--accent-deep)] disabled:cursor-not-allowed disabled:opacity-45"
+                  disabled={isSubmitting || setDrafts.length >= MAX_SETS_PER_SESSION}
                   onClick={(event) => {
                     event.preventDefault();
 
@@ -446,22 +567,83 @@ export function ChallengeShell({ bundle }: ChallengeShellProps) {
                       return;
                     }
 
-                    if (isSubmitting) {
+                    if (isSubmitting || setDrafts.length >= MAX_SETS_PER_SESSION) {
                       return;
                     }
 
-                    handleResetAction();
+                    handleAddSetAction();
                   }}
-                  onTouchStart={handleResetTouchStart}
+                  onTouchStart={handleAddSetTouchStart}
                   type="button"
                 >
-                  Reset sets
+                  Add set
                 </button>
               </div>
+            </div>
 
-              <p className="text-sm text-[var(--muted)]">
-                Sessions save immediately once submitted. Basic server-side validation and rate limiting are enabled.
-              </p>
+            <div className="flex items-center justify-between gap-4 rounded-[1.25rem] border border-[var(--line)] bg-[var(--panel-strong)] px-4 py-3">
+              <InlineSummaryStat label="Sets" value={`${previewSetCount}`} />
+              <InlineSummaryStat label="Total reps" value={`${previewReps}`} />
+            </div>
+
+            {submissionStatusMessage ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                {submissionStatusMessage}
+              </div>
+            ) : null}
+
+            {flash ? (
+              <div
+                className={`rounded-2xl border px-4 py-3 text-sm ${
+                  flash.tone === "success"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                    : "border-rose-200 bg-rose-50 text-rose-900"
+                }`}
+              >
+                {flash.text}
+              </div>
+            ) : null}
+
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <button
+                className="w-full rounded-full bg-[var(--accent)] px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-[var(--accent-deep)] disabled:cursor-not-allowed disabled:opacity-45 sm:w-auto"
+                disabled={!canSubmit || isSubmitting}
+                type="submit"
+              >
+                {isSubmitting
+                  ? "Saving..."
+                  : challengeStatus === "upcoming"
+                    ? "Challenge not started"
+                    : challengeStatus === "ended"
+                      ? "Challenge ended"
+                      : "Submit session"}
+              </button>
+              <button
+                className="w-full touch-manipulation rounded-full border border-[var(--line-strong)] px-5 py-3.5 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--accent)] hover:text-[var(--accent-deep)] sm:w-auto"
+                disabled={isSubmitting}
+                onClick={(event) => {
+                  event.preventDefault();
+
+                  if (Date.now() - lastTouchActionRef.current < 500) {
+                    return;
+                  }
+
+                  if (isSubmitting) {
+                    return;
+                  }
+
+                  handleResetAction();
+                }}
+                onTouchStart={handleResetTouchStart}
+                type="button"
+              >
+                Reset sets
+              </button>
+            </div>
+
+            <p className="text-sm text-[var(--muted)]">
+              Sessions save immediately once submitted. If the name is not listed yet, choose New participant and the app will create it during submission.
+            </p>
           </form>
         </Panel>
 

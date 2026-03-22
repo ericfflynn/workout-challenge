@@ -1,5 +1,5 @@
 import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabase";
-import type { ChallengeBundle, Session } from "@/lib/types";
+import type { ChallengeBundle, ChallengeSummary, Session } from "@/lib/types";
 
 type ChallengeRow = {
   id: string;
@@ -108,9 +108,14 @@ async function getChallengeBundleFromRow(
 ): Promise<ChallengeBundle> {
   const supabase = getSupabaseClient();
   const [
+    { data: challengeRows, error: challengesError },
     { data: participantRows, error: participantsError },
     { data: sessionRows, error: sessionsError },
   ] = await Promise.all([
+    supabase
+      .from("challenges")
+      .select("id, slug, title, description, exercise_type, week_number, start_at, end_at")
+      .order("start_at", { ascending: false }),
     supabase
       .from("participants")
       .select("id, display_name, is_active")
@@ -125,6 +130,10 @@ async function getChallengeBundleFromRow(
       .order("submitted_at", { ascending: true }),
   ]);
 
+  if (challengesError) {
+    throw new Error(`Failed to load challenge history: ${challengesError.message}`);
+  }
+
   if (participantsError) {
     throw new Error(`Failed to load participants: ${participantsError.message}`);
   }
@@ -133,6 +142,7 @@ async function getChallengeBundleFromRow(
     throw new Error(`Failed to load sessions: ${sessionsError.message}`);
   }
 
+  const normalizedChallenges = (challengeRows ?? []) as ChallengeRow[];
   const normalizedParticipants = (participantRows ?? []) as ParticipantRow[];
   const normalizedSessions = (sessionRows ?? []) as SessionRow[];
 
@@ -147,12 +157,24 @@ async function getChallengeBundleFromRow(
       startAt: challengeRow.start_at,
       endAt: challengeRow.end_at,
     },
+    challenges: normalizedChallenges.map(mapChallengeSummaryRow),
     participants: normalizedParticipants.map((participant) => ({
       id: participant.id,
       displayName: participant.display_name,
       isActive: participant.is_active,
     })),
     sessions: normalizedSessions.map(mapSessionRow),
+  };
+}
+
+function mapChallengeSummaryRow(challenge: ChallengeRow): ChallengeSummary {
+  return {
+    id: challenge.id,
+    slug: challenge.slug,
+    title: challenge.title,
+    weekNumber: challenge.week_number,
+    startAt: challenge.start_at,
+    endAt: challenge.end_at,
   };
 }
 

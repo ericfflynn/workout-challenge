@@ -17,6 +17,15 @@ export type Challenge = {
   endAt: string;
 };
 
+export type ChallengeSummary = {
+  id: string;
+  slug: string;
+  title: string;
+  weekNumber: number;
+  startAt: string;
+  endAt: string;
+};
+
 export type WorkoutSet = {
   id: string;
   sessionId: string;
@@ -35,6 +44,7 @@ export type Session = {
 
 export type ChallengeBundle = {
   challenge: Challenge;
+  challenges: ChallengeSummary[];
   participants: Participant[];
   sessions: Session[];
 };

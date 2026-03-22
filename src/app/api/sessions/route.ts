@@ -4,15 +4,28 @@ import {
   getRequestIp,
 } from "@/lib/rate-limit";
 import {
+  normalizeParticipantDisplayName,
   validateSessionSubmissionInput,
 } from "@/lib/session-submission";
 import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabase";
-import type { Session } from "@/lib/types";
+import type { Participant, Session } from "@/lib/types";
 
 type SubmitSessionRpcRow = {
   session_id: string;
   submitted_at: string;
   created_at: string;
+};
+
+type ParticipantRow = {
+  id: string;
+  display_name: string;
+  is_active: boolean;
+};
+
+type GetOrCreateParticipantRpcRow = {
+  participant_id: string;
+  display_name: string;
+  is_active: boolean;
 };
 
 export async function POST(request: NextRequest) {
@@ -58,10 +71,20 @@ export async function POST(request: NextRequest) {
   }
 
   const supabase = getSupabaseClient();
-  const { challengeId, participantId, sets } = validation.data;
+  const { challengeId, sets } = validation.data;
+  const participantResult =
+    "participantId" in validation.data
+      ? await getExistingParticipant(supabase, validation.data.participantId)
+      : await getOrCreateParticipant(supabase, validation.data.newParticipantName);
+
+  if (!participantResult.ok) {
+    return NextResponse.json({ error: participantResult.message }, { status: 400 });
+  }
+
+  const participant = participantResult.participant;
   const { data, error } = await supabase.rpc("submit_session", {
     p_challenge_id: challengeId,
-    p_participant_id: participantId,
+    p_participant_id: participant.id,
     p_sets: sets,
   });
 
@@ -90,7 +113,7 @@ export async function POST(request: NextRequest) {
   const session: Session = {
     id: row.session_id,
     challengeId,
-    participantId,
+    participantId: participant.id,
     submittedAt: row.submitted_at,
     createdAt: row.created_at,
     sets: sets.map((reps, index) => ({
@@ -101,5 +124,82 @@ export async function POST(request: NextRequest) {
     })),
   };
 
-  return NextResponse.json({ session }, { status: 201 });
+  return NextResponse.json({ participant, session }, { status: 201 });
+}
+
+async function getExistingParticipant(
+  supabase: ReturnType<typeof getSupabaseClient>,
+  participantId: string,
+) {
+  const { data, error } = await supabase
+    .from("participants")
+    .select("id, display_name, is_active")
+    .eq("id", participantId)
+    .maybeSingle();
+
+  if (error) {
+    return {
+      ok: false as const,
+      message: "The participant could not be loaded.",
+    };
+  }
+
+  const participant = data as ParticipantRow | null;
+
+  if (!participant || !participant.is_active) {
+    return {
+      ok: false as const,
+      message: "Choose an active participant before submitting a session.",
+    };
+  }
+
+  return {
+    ok: true as const,
+    participant: mapParticipantRow(participant),
+  };
+}
+
+async function getOrCreateParticipant(
+  supabase: ReturnType<typeof getSupabaseClient>,
+  displayName: string,
+) {
+  const normalizedDisplayName = normalizeParticipantDisplayName(displayName);
+  const { data, error } = await supabase.rpc("get_or_create_participant", {
+    p_display_name: normalizedDisplayName,
+  });
+
+  if (error) {
+    return {
+      ok: false as const,
+      message: error.message,
+    };
+  }
+
+  const row = (Array.isArray(data) ? data[0] : data) as
+    | GetOrCreateParticipantRpcRow
+    | null;
+
+  if (!row) {
+    return {
+      ok: false as const,
+      message: "The participant could not be created.",
+    };
+  }
+
+  return {
+    ok: true as const,
+    participant: {
+      id: row.participant_id,
+      displayName: row.display_name,
+      isActive: row.is_active,
+    } satisfies Participant,
+  };
+}
+
+function mapParticipantRow(row: ParticipantRow): Participant {
+  return {
+    id: row.id,
+    displayName: row.display_name,
+    isActive: row.is_active,
+  };
 }

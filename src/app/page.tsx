@@ -22,24 +22,15 @@ function EmptyHomeState({ configured }: { configured: boolean }) {
           Workout Challenge
         </p>
         <h1 className="mt-3 font-[family-name:var(--font-heading)] text-5xl leading-none text-[var(--accent-deep)] sm:text-7xl">
-          No challenge loaded
+          No data loaded
         </h1>
         <p className="mt-4 max-w-2xl text-sm leading-7 text-[var(--muted)] sm:text-base">
           {configured
-            ? "Supabase is connected, but there is no real challenge data to show yet. Create a challenge and participants, then refresh."
-            : "Supabase is not configured yet. Add your project URL and publishable key in .env.local, then create a challenge in Supabase."}
+            ? "There is nothing to show yet. Add this week's challenge and refresh when you're ready."
+            : "There is nothing to show yet. Connect the app data source and refresh when you're ready."}
         </p>
-        <div className="mt-6 grid gap-3 rounded-[1.5rem] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
-          <p className="text-sm font-semibold text-[var(--foreground)]">
-            Next steps
-          </p>
-          <p className="text-sm text-[var(--muted)]">
-            1. Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
-          </p>
-          <p className="text-sm text-[var(--muted)]">2. Run `supabase/schema.sql`</p>
-          <p className="text-sm text-[var(--muted)]">
-            3. Run `supabase/first-challenge.sql` or insert your own records
-          </p>
+        <div className="mt-6 rounded-[1.5rem] border border-[var(--line)] bg-[var(--panel-strong)] p-4 text-sm text-[var(--muted)]">
+          Once a challenge is created, the app will load it automatically.
         </div>
       </section>
     </main>

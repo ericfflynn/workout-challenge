@@ -1,11 +1,25 @@
 export const MAX_SETS_PER_SESSION = 20;
 export const MAX_REPS_PER_SET = 250;
+export const MAX_PARTICIPANT_NAME_LENGTH = 60;
 
-export type SessionSubmissionInput = {
+type SessionSubmissionBase = {
   challengeId: string;
-  participantId: string;
   sets: number[];
 };
+
+type ExistingParticipantSessionSubmissionInput = SessionSubmissionBase & {
+  participantId: string;
+  newParticipantName?: undefined;
+};
+
+type NewParticipantSessionSubmissionInput = SessionSubmissionBase & {
+  participantId?: undefined;
+  newParticipantName: string;
+};
+
+export type SessionSubmissionInput =
+  | ExistingParticipantSessionSubmissionInput
+  | NewParticipantSessionSubmissionInput;
 
 type ValidationResult =
   | {
@@ -16,6 +30,10 @@ type ValidationResult =
       ok: false;
       message: string;
     };
+
+export function normalizeParticipantDisplayName(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
 
 export function validateSessionSubmissionInput(
   payload: unknown,
@@ -28,6 +46,11 @@ export function validateSessionSubmissionInput(
   }
 
   const candidate = payload as Partial<SessionSubmissionInput>;
+  const hasParticipantId =
+    typeof candidate.participantId === "string" && candidate.participantId.length > 0;
+  const hasNewParticipantName =
+    typeof candidate.newParticipantName === "string" &&
+    candidate.newParticipantName.length > 0;
 
   if (!candidate.challengeId || typeof candidate.challengeId !== "string") {
     return {
@@ -36,10 +59,10 @@ export function validateSessionSubmissionInput(
     };
   }
 
-  if (!candidate.participantId || typeof candidate.participantId !== "string") {
+  if (hasParticipantId === hasNewParticipantName) {
     return {
       ok: false,
-      message: "A participant is required.",
+      message: "Choose an existing participant or enter a new participant name.",
     };
   }
 
@@ -73,12 +96,41 @@ export function validateSessionSubmissionInput(
     };
   }
 
+  if (hasParticipantId) {
+    return {
+      ok: true,
+      data: {
+        challengeId: candidate.challengeId,
+        participantId: candidate.participantId!,
+        sets: parsedSets,
+      },
+    };
+  }
+
+  const normalizedParticipantName = normalizeParticipantDisplayName(
+    candidate.newParticipantName!,
+  );
+
+  if (!normalizedParticipantName) {
+    return {
+      ok: false,
+      message: "Enter a participant name.",
+    };
+  }
+
+  if (normalizedParticipantName.length > MAX_PARTICIPANT_NAME_LENGTH) {
+    return {
+      ok: false,
+      message: `Participant names must be ${MAX_PARTICIPANT_NAME_LENGTH} characters or fewer.`,
+    };
+  }
+
   return {
     ok: true,
     data: {
       challengeId: candidate.challengeId,
-      participantId: candidate.participantId,
       sets: parsedSets,
+      newParticipantName: normalizedParticipantName,
     },
   };
 }
