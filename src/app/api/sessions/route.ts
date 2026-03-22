@@ -73,9 +73,12 @@ export async function POST(request: NextRequest) {
   const supabase = getSupabaseClient();
   const { challengeId, sets } = validation.data;
   const participantResult =
-    "participantId" in validation.data
+    typeof validation.data.participantId === "string"
       ? await getExistingParticipant(supabase, validation.data.participantId)
-      : await getOrCreateParticipant(supabase, validation.data.newParticipantName);
+      : await getOrCreateParticipant(
+          supabase,
+          validation.data.newParticipantName,
+        );
 
   if (!participantResult.ok) {
     return NextResponse.json({ error: participantResult.message }, { status: 400 });
