@@ -24,7 +24,7 @@ export async function generateMetadata({
   }
 
   return {
-    title: `${bundle.challenge.title} | Workout Challenge`,
+    title: `Pushup Challenge | Week ${bundle.challenge.weekNumber}`,
     description: bundle.challenge.description,
   };
 }

@@ -13,9 +13,11 @@ create table if not exists public.challenges (
   title text not null,
   description text not null default '',
   exercise_type text not null check (exercise_type in ('pushups')),
+  week_number integer not null check (week_number > 0),
   start_at timestamptz not null,
   end_at timestamptz not null,
   created_at timestamptz not null default timezone('utc', now()),
+  unique (exercise_type, week_number),
   check (end_at > start_at)
 );
 

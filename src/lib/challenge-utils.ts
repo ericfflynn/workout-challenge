@@ -8,6 +8,17 @@ import type {
   TotalLeaderboardEntry,
 } from "@/lib/types";
 
+const DISPLAY_TIME_ZONE = "America/New_York";
+
+type DateTimeParts = {
+  weekday?: string;
+  month: string;
+  day: string;
+  hour: string;
+  minute: string;
+  dayPeriod: string;
+};
+
 export function getChallengeStatus(
   challenge: Challenge,
   now = new Date(),
@@ -31,24 +42,17 @@ export function getSessionTotal(session: Session) {
 }
 
 export function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(value));
+  const parts = getDateTimeParts(new Date(value));
+  return `${parts.month} ${parts.day} at ${parts.hour}:${parts.minute} ${parts.dayPeriod}`;
 }
 
 export function formatChallengeWindow(challenge: Challenge) {
-  const formatter = new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-  });
+  return `${formatDateTime(challenge.startAt)} to ${formatDateTime(challenge.endAt)}`;
+}
 
-  return `${formatter.format(new Date(challenge.startAt))} to ${formatter.format(
-    new Date(challenge.endAt),
-  )}`;
+export function formatChallengeEnd(challenge: Challenge) {
+  const parts = getDateTimeParts(new Date(challenge.endAt), true);
+  return `${parts.weekday}, ${parts.month} ${parts.day} at ${parts.hour}:${parts.minute} ${parts.dayPeriod}`;
 }
 
 export function getCountdownLabel(challenge: Challenge, now = new Date()) {
@@ -85,6 +89,32 @@ export function getCountdownLabel(challenge: Challenge, now = new Date()) {
     : `${parts.join(" ")} left`;
 }
 
+export function getCountdownDaysAndHours(
+  challenge: Challenge,
+  now = new Date(),
+) {
+  const status = getChallengeStatus(challenge, now);
+
+  if (status === "ended") {
+    return "Ended";
+  }
+
+  const target =
+    status === "upcoming"
+      ? new Date(challenge.startAt).getTime()
+      : new Date(challenge.endAt).getTime();
+  const remainingMs = Math.max(target - now.getTime(), 0);
+  const totalHours = Math.floor(remainingMs / (1000 * 60 * 60));
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+
+  if (status === "upcoming") {
+    return `Starts in ${days}d ${hours}h`;
+  }
+
+  return `${days}d ${hours}h left`;
+}
+
 export function buildTotalLeaderboard(
   participants: Participant[],
   sessions: Session[],
@@ -104,6 +134,10 @@ export function buildTotalLeaderboard(
         (sum, session) => sum + getSessionTotal(session),
         0,
       );
+      const totalSetCount = participantSessions.reduce(
+        (sum, session) => sum + session.sets.length,
+        0,
+      );
 
       const bestSet = participantSessions.reduce((best, session) => {
         const sessionBest = session.sets.reduce(
@@ -120,7 +154,15 @@ export function buildTotalLeaderboard(
         totalReps,
         bestSet,
         sessionCount: participantSessions.length,
-        reachedTotalAt: participantSessions.at(-1)?.submittedAt ?? null,
+        totalSetCount,
+        averageRepsPerSet:
+          totalSetCount > 0
+            ? Math.round((totalReps / totalSetCount) * 10) / 10
+            : 0,
+        reachedTotalAt:
+          participantSessions.length > 0
+            ? participantSessions[participantSessions.length - 1]?.submittedAt ?? null
+            : null,
       };
     })
     .filter((entry) => entry.sessionCount > 0)
@@ -206,4 +248,36 @@ export function buildSessionFeed(
       setCount: session.sets.length,
       submittedAt: session.submittedAt,
     }));
+}
+
+function getDateTimeParts(date: Date, includeWeekday = false): DateTimeParts {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: DISPLAY_TIME_ZONE,
+    weekday: includeWeekday ? "short" : undefined,
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+
+  const values = formatter.formatToParts(date).reduce<Record<string, string>>(
+    (accumulator, part) => {
+      if (part.type !== "literal") {
+        accumulator[part.type] = part.value;
+      }
+
+      return accumulator;
+    },
+    {},
+  );
+
+  return {
+    weekday: values.weekday,
+    month: values.month,
+    day: values.day,
+    hour: values.hour,
+    minute: values.minute,
+    dayPeriod: values.dayPeriod,
+  };
 }

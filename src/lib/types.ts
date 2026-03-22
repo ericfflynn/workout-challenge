@@ -12,6 +12,7 @@ export type Challenge = {
   title: string;
   description: string;
   exerciseType: "pushups";
+  weekNumber: number;
   startAt: string;
   endAt: string;
 };
@@ -44,6 +45,8 @@ export type TotalLeaderboardEntry = {
   totalReps: number;
   bestSet: number;
   sessionCount: number;
+  totalSetCount: number;
+  averageRepsPerSet: number;
   reachedTotalAt: string | null;
 };
 

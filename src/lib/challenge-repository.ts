@@ -7,6 +7,7 @@ type ChallengeRow = {
   title: string;
   description: string | null;
   exercise_type: "pushups";
+  week_number: number;
   start_at: string;
   end_at: string;
 };
@@ -42,7 +43,7 @@ export async function getActiveChallengeBundle(): Promise<ChallengeBundle | null
   const now = new Date().toISOString();
   const { data: activeChallenge, error } = await supabase
     .from("challenges")
-    .select("id, slug, title, description, exercise_type, start_at, end_at")
+    .select("id, slug, title, description, exercise_type, week_number, start_at, end_at")
     .lte("start_at", now)
     .gte("end_at", now)
     .order("start_at", { ascending: false })
@@ -59,7 +60,7 @@ export async function getActiveChallengeBundle(): Promise<ChallengeBundle | null
 
   const { data: latestChallenge, error: latestChallengeError } = await supabase
     .from("challenges")
-    .select("id, slug, title, description, exercise_type, start_at, end_at")
+    .select("id, slug, title, description, exercise_type, week_number, start_at, end_at")
     .order("start_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -87,7 +88,7 @@ export async function getChallengeBundleBySlug(
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("challenges")
-    .select("id, slug, title, description, exercise_type, start_at, end_at")
+    .select("id, slug, title, description, exercise_type, week_number, start_at, end_at")
     .eq("slug", slug)
     .maybeSingle();
 
@@ -142,6 +143,7 @@ async function getChallengeBundleFromRow(
       title: challengeRow.title,
       description: challengeRow.description ?? "",
       exerciseType: challengeRow.exercise_type,
+      weekNumber: challengeRow.week_number,
       startAt: challengeRow.start_at,
       endAt: challengeRow.end_at,
     },

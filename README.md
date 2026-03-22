@@ -1,79 +1,88 @@
 # Workout Challenge
 
-Lightweight public fitness challenge app built with Next.js. The current prototype models the first MVP challenge: a one-week pushup leaderboard with batch session submission and a secondary leaderboard for best single set.
+Lightweight public fitness challenge app for simple leaderboard-based competitions.
+
+The current MVP is a one-week pushup challenge:
+
+- public challenge page
+- organizer-managed participants
+- challenge dates with stored week numbers
+- batch session submission
+- multiple sets per session
+- total reps leaderboard
+- best single set leaderboard
+
+## Stack
+
+- Next.js
+- React
+- Supabase
+- Tailwind CSS
+
+## What Works
+
+- real challenge and participant reads from Supabase
+- persistent session submissions
+- mobile-first submission flow
+- live leaderboard recalculation after submit
+- explicit empty states when no real data exists
 
 ## Local Development
 
+1. Install dependencies:
+
 ```bash
 npm install
-npm run dev
 ```
 
-Visit `http://localhost:3000`. The home route redirects to the active challenge slug.
-
-## Current State
-
-- App Router Next.js scaffold
-- Public challenge page backed by Supabase
-- Batch session submission with server-side persistence
-- Total reps leaderboard
-- Best single set leaderboard
-- Initial Supabase schema in `supabase/schema.sql`
-
-If Supabase is not configured, or no real challenge exists yet, the app shows an explicit empty state instead of sample data.
-
-## Supabase Setup
-
-1. Create a Supabase project.
-2. In the Supabase dashboard, open the SQL Editor and run `supabase/schema.sql`.
-   If you already ran the schema before session writes were added, also run `supabase/submit-session-function.sql`.
-3. In the project Connect dialog or API Keys settings, copy:
-   - Project URL
-   - Publishable key
-4. Create `.env.local` in the project root with:
+2. Create `.env.local`:
 
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=your-project-url
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
 ```
 
-Once those values exist, the app will read challenge, participant, session, and set data from Supabase instead of the local seed file.
+The app also accepts `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY` if that is what your Supabase project exposes.
 
-## Initial Data
+3. Run the app:
 
-To create your first real setup, run:
+```bash
+npm run dev
+```
 
-- `supabase/first-challenge.sql`
+Open `http://localhost:3000`.
 
-That script creates:
+## Supabase Setup
 
-- one pushup challenge from March 21, 2026 through March 29, 2026
-- three active participants: Eric, Joe, and Nick
-- no sessions yet
+Run these SQL files in Supabase:
 
-## Session Writes
+1. `supabase/schema.sql`
+2. `supabase/submit-session-function.sql`
+3. `supabase/first-challenge.sql` if you want a starter challenge with Eric, Joe, and Nick
 
-Session submissions now persist through a Postgres function:
+If you are starting from a clean database and run the current `schema.sql`, it already includes the session function. Running `submit-session-function.sql` separately is mainly useful when updating an older setup.
 
-- `supabase/submit-session-function.sql`
-
-The API route applies:
-
-- server-side input validation
-- max 20 sets per session
-- max 250 reps per set
-- lightweight in-memory rate limiting per IP
+If you already have an older challenge table in Supabase, run `supabase/add-challenge-week-number.sql` once before reseeding so each challenge stores its `week_number`.
 
 ## Project Structure
 
-- `src/app/` app routes
-- `src/components/` UI shell for the challenge page
-- `src/lib/` domain types, repository utilities, and Supabase client setup
-- `docs/mvp-spec.md` product spec
-- `supabase/schema.sql` initial database schema and public policies
+- `src/app/` routes and API handlers
+- `src/components/` UI components
+- `src/lib/` domain logic, Supabase client, validation, rate limiting
+- `supabase/` schema and setup SQL
+- `docs/` product notes and MVP spec
 
-## Next Steps
+## Current Constraints
 
-- Add organizer-managed participant and challenge setup
-- Decide whether you want a participant PIN or another lightweight anti-abuse layer
-- Tighten public reads if you only want standings visible
+- public honor-system submissions
+- no participant auth yet
+- lightweight in-memory rate limiting only
+- one main challenge flow optimized for pushups
+
+## Next Likely Improvements
+
+- participant PIN or another simple anti-abuse layer
+- challenge-specific participant assignment
+- organizer/admin workflow
+- tighter public data exposure rules
+- frontend polish

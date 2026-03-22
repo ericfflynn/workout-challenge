@@ -15,15 +15,17 @@ insert into public.challenges (
   title,
   description,
   exercise_type,
+  week_number,
   start_at,
   end_at
 )
 values (
   'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
   'pushup-week-1',
-  'Pushup Week 1',
+  'Pushup Challenge',
   'A one-week honor-system pushup challenge. Log batch sessions, climb the total reps leaderboard, and chase the best single set.',
   'pushups',
+  1,
   timestamptz '2026-03-21 00:00:00 America/New_York',
   timestamptz '2026-03-29 23:59:59 America/New_York'
 );

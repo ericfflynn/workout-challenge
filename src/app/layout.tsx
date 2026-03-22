@@ -24,8 +24,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={`${headingFont.variable} ${bodyFont.variable}`}>
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <meta
+          content="telephone=no, date=no, email=no, address=no"
+          name="format-detection"
+        />
+      </head>
+      <body
+        className={`${headingFont.variable} ${bodyFont.variable}`}
+        suppressHydrationWarning
+      >
         {children}
       </body>
     </html>
