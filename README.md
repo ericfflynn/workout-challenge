@@ -100,6 +100,7 @@ That means you do not need a duplicate `week_number` column on `sessions`. The w
 ## Next Likely Improvements
 
 - participant PIN or another simple anti-abuse layer
+- unique participant nickname plus private PIN, with the nickname shown publicly and the PIN used as lightweight submission verification
 - challenge-specific participant assignment
 - organizer/admin workflow
 - tighter public data exposure rules

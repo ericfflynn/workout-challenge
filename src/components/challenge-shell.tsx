@@ -1,6 +1,8 @@
 "use client";
 
 import { startTransition, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { AppHeader } from "@/components/app-header";
 import { useRouter } from "next/navigation";
 import {
   buildBestSetLeaderboard,
@@ -28,6 +30,8 @@ import {
 
 type ChallengeShellProps = {
   bundle: ChallengeBundle;
+  renderedAt: string;
+  selectedParticipantId: string;
 };
 
 type SetDraft = {
@@ -88,11 +92,14 @@ function getStatusClasses(status: "upcoming" | "active" | "ended") {
   return "border-emerald-200 bg-emerald-50 text-emerald-900";
 }
 
-export function ChallengeShell({ bundle }: ChallengeShellProps) {
+export function ChallengeShell({
+  bundle,
+  renderedAt,
+  selectedParticipantId,
+}: ChallengeShellProps) {
   const draftCountRef = useRef(3);
   const lastTouchActionRef = useRef(0);
   const router = useRouter();
-  const [isClientReady, setIsClientReady] = useState(false);
   const [participants, setParticipants] = useState(() =>
     sortParticipantsByName(bundle.participants),
   );
@@ -102,12 +109,11 @@ export function ChallengeShell({ bundle }: ChallengeShellProps) {
   const [sessions, setSessions] = useState<Session[]>(bundle.sessions);
   const [flash, setFlash] = useState<FlashMessage>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [currentTime, setCurrentTime] = useState(() => new Date());
+  const [currentTime, setCurrentTime] = useState(() => new Date(renderedAt));
 
   useEffect(() => {
-    setIsClientReady(true);
     setCurrentTime(new Date());
-  }, []);
+  }, [renderedAt]);
 
   useEffect(() => {
     setParticipants(sortParticipantsByName(bundle.participants));
@@ -119,10 +125,6 @@ export function ChallengeShell({ bundle }: ChallengeShellProps) {
     setSetDrafts([buildDraftSet("draft-1", "")]);
     draftCountRef.current = 2;
   }, [bundle.challenge.id, bundle.participants, bundle.sessions]);
-
-  if (!isClientReady) {
-    return <ChallengeShellSkeleton />;
-  }
 
   const challengeStatus = getChallengeStatus(bundle.challenge, currentTime);
   const challengeStartsAt = formatDateTime(bundle.challenge.startAt);
@@ -368,7 +370,13 @@ export function ChallengeShell({ bundle }: ChallengeShellProps) {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-4 sm:px-6 sm:py-6">
+    <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-4 pb-24 sm:px-6 sm:py-6 sm:pb-6">
+      <AppHeader
+        challengeSlug={bundle.challenge.slug}
+        participants={bundle.participants}
+        selectedParticipantId={selectedParticipantId}
+      />
+
       <section className="relative overflow-hidden rounded-[2rem] border border-[var(--line)] bg-[var(--panel)] px-5 py-5 shadow-[var(--shadow)] backdrop-blur sm:px-7 sm:py-7">
         <div
           aria-hidden="true"
@@ -682,9 +690,12 @@ export function ChallengeShell({ bundle }: ChallengeShellProps) {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-base font-semibold text-[var(--foreground)]">
+                      <Link
+                        className="text-base font-semibold text-[var(--foreground)] transition hover:text-[var(--accent-deep)]"
+                        href={`/profiles/${session.participantId}`}
+                      >
                         {session.participantName}
-                      </p>
+                      </Link>
                       <p className="mt-1 text-sm text-[var(--muted)]">
                         {formatDateTime(session.submittedAt)}
                       </p>
@@ -820,88 +831,6 @@ function EmptyBlock({ text }: { text: string }) {
   );
 }
 
-function ChallengeShellSkeleton() {
-  return (
-    <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-4 sm:px-6 sm:py-6">
-      <section className="rounded-[2rem] border border-[var(--line)] bg-[var(--panel)] px-5 py-5 shadow-[var(--shadow)] backdrop-blur sm:px-7 sm:py-7">
-        <div className="space-y-4">
-          <div className="h-12 w-52 rounded-full bg-white/60 sm:h-16" />
-          <div className="h-5 w-40 rounded-full bg-white/55" />
-          <div className="h-16 rounded-[1.15rem] bg-white/55" />
-          <div className="grid gap-2 sm:grid-cols-2">
-            <div className="h-28 rounded-[1.15rem] bg-white/55" />
-            <div className="h-28 rounded-[1.15rem] bg-white/55" />
-          </div>
-        </div>
-      </section>
-
-      <div className="mt-6 grid gap-6 xl:grid-cols-[1.04fr_0.96fr]">
-        <Panel
-          eyebrow="Log session"
-          id="submit"
-          title="Log a session"
-          description="Pick a name, enter each set from the workout, and submit the whole session at once."
-        >
-          <ClientFormSkeleton />
-        </Panel>
-        <Panel
-          eyebrow="Leaderboard"
-          id="totals"
-          title="Total volume"
-          description="This is the main race. Every valid set in the challenge window counts toward total reps."
-        >
-          <div className="h-56 rounded-[1.5rem] border border-[var(--line)] bg-white/65" />
-        </Panel>
-      </div>
-
-      <div className="mt-6 grid gap-6 xl:grid-cols-[0.96fr_1.04fr]">
-        <Panel
-          eyebrow="Secondary race"
-          id="best-set"
-          title="Best single set"
-          description="A single monster set earns its own leaderboard, separate from weekly volume."
-        >
-          <div className="h-40 rounded-[1.5rem] border border-[var(--line)] bg-white/65" />
-        </Panel>
-        <Panel
-          eyebrow="Recent activity"
-          id="recent"
-          title="Latest sessions"
-          description="Recent batch submissions in this prototype feed."
-        >
-          <div className="h-48 rounded-[1.5rem] border border-[var(--line)] bg-white/65" />
-        </Panel>
-      </div>
-    </main>
-  );
-}
-
-function ClientFormSkeleton() {
-  return (
-    <div className="space-y-5">
-      <div className="grid gap-2">
-        <div className="h-4 w-24 rounded-full bg-white/55" />
-        <div className="h-14 rounded-2xl bg-white/65" />
-      </div>
-      <div className="rounded-[1.5rem] border border-[var(--line)] bg-white/70 p-4">
-        <div className="space-y-1">
-          <div className="h-4 w-14 rounded-full bg-white/55" />
-          <div className="h-4 w-32 rounded-full bg-white/45" />
-        </div>
-        <div className="mt-3 grid gap-2">
-          <div className="h-12 rounded-xl bg-white/65" />
-        </div>
-        <div className="mt-3 h-11 rounded-xl bg-white/65" />
-      </div>
-      <div className="h-12 rounded-[1.25rem] border border-[var(--line)] bg-[var(--panel-strong)]" />
-      <div className="flex flex-col gap-3 sm:flex-row">
-        <div className="h-12 w-full rounded-full bg-[var(--accent-soft)] sm:w-40" />
-        <div className="h-12 w-full rounded-full bg-white/65 sm:w-32" />
-      </div>
-    </div>
-  );
-}
-
 function TotalLeaderboard({ entries }: { entries: TotalLeaderboardEntry[] }) {
   if (entries.length === 0) {
     return (
@@ -930,9 +859,12 @@ function TotalLeaderboard({ entries }: { entries: TotalLeaderboardEntry[] }) {
                 >
                   Rank #{index + 1}
                 </p>
-                <p className="mt-1 text-lg font-semibold text-[var(--foreground)]">
+                <Link
+                  className="mt-1 block text-lg font-semibold text-[var(--foreground)] transition hover:text-[var(--accent-deep)]"
+                  href={`/profiles/${entry.participantId}`}
+                >
                   {entry.displayName}
-                </p>
+                </Link>
               </div>
               <div className="text-right">
                 <p className="font-[family-name:var(--font-heading)] text-4xl leading-none text-[var(--accent-deep)]">
@@ -958,7 +890,13 @@ function TotalLeaderboard({ entries }: { entries: TotalLeaderboardEntry[] }) {
             isLeader: index === 0,
             cells: [
               `#${index + 1}`,
-              entry.displayName,
+              <Link
+                className="transition hover:text-[var(--accent-deep)]"
+                href={`/profiles/${entry.participantId}`}
+                key={`${entry.participantId}-profile-link`}
+              >
+                {entry.displayName}
+              </Link>,
               `${entry.totalReps}`,
               `${entry.bestSet}`,
               `${entry.totalSetCount}`,
@@ -999,9 +937,12 @@ function BestSetLeaderboard({ entries }: { entries: BestSetEntry[] }) {
                 >
                   Rank #{index + 1}
                 </p>
-                <p className="mt-1 text-lg font-semibold text-[var(--foreground)]">
+                <Link
+                  className="mt-1 block text-lg font-semibold text-[var(--foreground)] transition hover:text-[var(--accent-deep)]"
+                  href={`/profiles/${entry.participantId}`}
+                >
                   {entry.displayName}
-                </p>
+                </Link>
                 <p className="mt-2 text-sm text-[var(--muted)]">
                   {entry.submittedAt ? formatDateTime(entry.submittedAt) : "No sets yet"}
                 </p>
@@ -1027,7 +968,13 @@ function BestSetLeaderboard({ entries }: { entries: BestSetEntry[] }) {
             isLeader: index === 0,
             cells: [
               `#${index + 1}`,
-              entry.displayName,
+              <Link
+                className="transition hover:text-[var(--accent-deep)]"
+                href={`/profiles/${entry.participantId}`}
+                key={`${entry.participantId}-profile-link`}
+              >
+                {entry.displayName}
+              </Link>,
               `${entry.reps}`,
               entry.submittedAt ? formatDateTime(entry.submittedAt) : "No sets yet",
             ],
@@ -1046,7 +993,7 @@ function BasicLeaderboardTable({
   rows: Array<{
     id: string;
     isLeader?: boolean;
-    cells: string[];
+    cells: React.ReactNode[];
   }>;
 }) {
   return (

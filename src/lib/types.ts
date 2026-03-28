@@ -49,6 +49,23 @@ export type ChallengeBundle = {
   sessions: Session[];
 };
 
+export type HomePageBundle = {
+  challenge: Challenge | null;
+  challenges: ChallengeSummary[];
+  participants: Participant[];
+  sessions: Session[];
+};
+
+export type ProfileSession = Session & {
+  challenge: ChallengeSummary;
+};
+
+export type ParticipantProfileBundle = {
+  participant: Participant;
+  participants: Participant[];
+  sessions: ProfileSession[];
+};
+
 export type TotalLeaderboardEntry = {
   participantId: string;
   displayName: string;
@@ -69,6 +86,7 @@ export type BestSetEntry = {
 
 export type SessionFeedItem = {
   id: string;
+  participantId: string;
   participantName: string;
   totalReps: number;
   setCount: number;

@@ -1,5 +1,11 @@
 import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabase";
-import type { ChallengeBundle, ChallengeSummary, Session } from "@/lib/types";
+import type {
+  Challenge,
+  ChallengeBundle,
+  ChallengeSummary,
+  HomePageBundle,
+  Session,
+} from "@/lib/types";
 
 type ChallengeRow = {
   id: string;
@@ -40,42 +46,32 @@ export async function getActiveChallengeBundle(): Promise<ChallengeBundle | null
   }
 
   const supabase = getSupabaseClient();
-  const now = new Date().toISOString();
-  const { data: activeChallenge, error } = await supabase
-    .from("challenges")
-    .select("id, slug, title, description, exercise_type, week_number, start_at, end_at")
-    .lte("start_at", now)
-    .gte("end_at", now)
-    .order("start_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(`Failed to load the active challenge: ${error.message}`);
-  }
-
-  if (activeChallenge) {
-    return getChallengeBundleFromRow(activeChallenge);
-  }
-
-  const { data: latestChallenge, error: latestChallengeError } = await supabase
-    .from("challenges")
-    .select("id, slug, title, description, exercise_type, week_number, start_at, end_at")
-    .order("start_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (latestChallengeError) {
-    throw new Error(
-      `Failed to load the latest challenge: ${latestChallengeError.message}`,
-    );
-  }
+  const latestChallenge = await getActiveOrLatestChallengeRow(supabase);
 
   if (!latestChallenge) {
     return null;
   }
 
   return getChallengeBundleFromRow(latestChallenge);
+}
+
+export async function getHomePageBundle(): Promise<HomePageBundle | null> {
+  if (!isSupabaseConfigured()) {
+    return null;
+  }
+
+  const supabase = getSupabaseClient();
+  const [challengeRow, collections] = await Promise.all([
+    getActiveOrLatestChallengeRow(supabase),
+    getSharedCollections(supabase, undefined),
+  ]);
+
+  return {
+    challenge: challengeRow ? mapChallengeRow(challengeRow) : null,
+    challenges: collections.challenges,
+    participants: collections.participants,
+    sessions: collections.sessions,
+  };
 }
 
 export async function getChallengeBundleBySlug(
@@ -107,6 +103,68 @@ async function getChallengeBundleFromRow(
   challengeRow: ChallengeRow,
 ): Promise<ChallengeBundle> {
   const supabase = getSupabaseClient();
+  const collections = await getSharedCollections(supabase, challengeRow.id);
+
+  return {
+    challenge: mapChallengeRow(challengeRow),
+    challenges: collections.challenges,
+    participants: collections.participants,
+    sessions: collections.sessions,
+  };
+}
+
+async function getActiveOrLatestChallengeRow(
+  supabase: ReturnType<typeof getSupabaseClient>,
+): Promise<ChallengeRow | null> {
+  const now = new Date().toISOString();
+  const { data: activeChallenge, error } = await supabase
+    .from("challenges")
+    .select("id, slug, title, description, exercise_type, week_number, start_at, end_at")
+    .lte("start_at", now)
+    .gte("end_at", now)
+    .order("start_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to load the active challenge: ${error.message}`);
+  }
+
+  if (activeChallenge) {
+    return activeChallenge as ChallengeRow;
+  }
+
+  const { data: latestChallenge, error: latestChallengeError } = await supabase
+    .from("challenges")
+    .select("id, slug, title, description, exercise_type, week_number, start_at, end_at")
+    .order("start_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (latestChallengeError) {
+    throw new Error(
+      `Failed to load the latest challenge: ${latestChallengeError.message}`,
+    );
+  }
+
+  return (latestChallenge as ChallengeRow | null) ?? null;
+}
+
+async function getSharedCollections(
+  supabase: ReturnType<typeof getSupabaseClient>,
+  challengeId?: string,
+) {
+  const sessionsQuery = supabase
+    .from("sessions")
+    .select(
+      "id, challenge_id, participant_id, submitted_at, created_at, sets(id, session_id, set_order, reps)",
+    )
+    .order("submitted_at", { ascending: true });
+
+  if (challengeId) {
+    sessionsQuery.eq("challenge_id", challengeId);
+  }
+
   const [
     { data: challengeRows, error: challengesError },
     { data: participantRows, error: participantsError },
@@ -121,13 +179,7 @@ async function getChallengeBundleFromRow(
       .select("id, display_name, is_active")
       .eq("is_active", true)
       .order("display_name", { ascending: true }),
-    supabase
-      .from("sessions")
-      .select(
-        "id, challenge_id, participant_id, submitted_at, created_at, sets(id, session_id, set_order, reps)",
-      )
-      .eq("challenge_id", challengeRow.id)
-      .order("submitted_at", { ascending: true }),
+    sessionsQuery,
   ]);
 
   if (challengesError) {
@@ -142,28 +194,27 @@ async function getChallengeBundleFromRow(
     throw new Error(`Failed to load sessions: ${sessionsError.message}`);
   }
 
-  const normalizedChallenges = (challengeRows ?? []) as ChallengeRow[];
-  const normalizedParticipants = (participantRows ?? []) as ParticipantRow[];
-  const normalizedSessions = (sessionRows ?? []) as SessionRow[];
-
   return {
-    challenge: {
-      id: challengeRow.id,
-      slug: challengeRow.slug,
-      title: challengeRow.title,
-      description: challengeRow.description ?? "",
-      exerciseType: challengeRow.exercise_type,
-      weekNumber: challengeRow.week_number,
-      startAt: challengeRow.start_at,
-      endAt: challengeRow.end_at,
-    },
-    challenges: normalizedChallenges.map(mapChallengeSummaryRow),
-    participants: normalizedParticipants.map((participant) => ({
+    challenges: ((challengeRows ?? []) as ChallengeRow[]).map(mapChallengeSummaryRow),
+    participants: ((participantRows ?? []) as ParticipantRow[]).map((participant) => ({
       id: participant.id,
       displayName: participant.display_name,
       isActive: participant.is_active,
     })),
-    sessions: normalizedSessions.map(mapSessionRow),
+    sessions: ((sessionRows ?? []) as SessionRow[]).map(mapSessionRow),
+  };
+}
+
+function mapChallengeRow(challenge: ChallengeRow): Challenge {
+  return {
+    id: challenge.id,
+    slug: challenge.slug,
+    title: challenge.title,
+    description: challenge.description ?? "",
+    exerciseType: challenge.exercise_type,
+    weekNumber: challenge.week_number,
+    startAt: challenge.start_at,
+    endAt: challenge.end_at,
   };
 }
 

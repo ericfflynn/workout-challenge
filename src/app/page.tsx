@@ -1,17 +1,40 @@
+import { HomeShell } from "@/components/home-shell";
+import { getHomePageBundle } from "@/lib/challenge-repository";
 import { redirect } from "next/navigation";
-import { getActiveChallengeBundle } from "@/lib/challenge-repository";
 import { isSupabaseConfigured } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
-export default async function HomePage() {
-  const bundle = await getActiveChallengeBundle();
+type HomePageProps = {
+  searchParams?: Promise<{
+    participantId?: string;
+  }>;
+};
 
-  if (!bundle) {
+export default async function HomePage({ searchParams }: HomePageProps) {
+  const bundle = await getHomePageBundle();
+
+  if (
+    !bundle ||
+    (bundle.challenge === null &&
+      bundle.participants.length === 0 &&
+      bundle.sessions.length === 0 &&
+      bundle.challenges.length === 0)
+  ) {
     return <EmptyHomeState configured={isSupabaseConfigured()} />;
   }
 
-  redirect(`/challenges/${bundle.challenge.slug}`);
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const selectedParticipantId = resolvedSearchParams?.participantId;
+
+  if (
+    selectedParticipantId &&
+    bundle.participants.some((participant) => participant.id === selectedParticipantId)
+  ) {
+    redirect(`/profiles/${selectedParticipantId}`);
+  }
+
+  return <HomeShell bundle={bundle} />;
 }
 
 function EmptyHomeState({ configured }: { configured: boolean }) {

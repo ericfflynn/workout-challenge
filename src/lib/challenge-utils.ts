@@ -243,6 +243,7 @@ export function buildSessionFeed(
     )
     .map((session) => ({
       id: session.id,
+      participantId: session.participantId,
       participantName: participantMap.get(session.participantId) ?? "Unknown",
       totalReps: getSessionTotal(session),
       setCount: session.sets.length,

@@ -9,6 +9,9 @@ type ChallengePageProps = {
   params: Promise<{
     slug: string;
   }>;
+  searchParams?: Promise<{
+    participantId?: string;
+  }>;
 };
 
 export async function generateMetadata({
@@ -29,7 +32,10 @@ export async function generateMetadata({
   };
 }
 
-export default async function ChallengePage({ params }: ChallengePageProps) {
+export default async function ChallengePage({
+  params,
+  searchParams,
+}: ChallengePageProps) {
   const { slug } = await params;
   const bundle = await getChallengeBundleBySlug(slug);
 
@@ -37,5 +43,15 @@ export default async function ChallengePage({ params }: ChallengePageProps) {
     notFound();
   }
 
-  return <ChallengeShell bundle={bundle} />;
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const selectedParticipantId =
+    resolvedSearchParams?.participantId ?? "";
+
+  return (
+    <ChallengeShell
+      bundle={bundle}
+      renderedAt={new Date().toISOString()}
+      selectedParticipantId={selectedParticipantId}
+    />
+  );
 }
