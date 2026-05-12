@@ -1,16 +1,38 @@
 # Workout Challenge
 
-Lightweight public fitness challenge app for simple leaderboard-based competitions.
+Archived pushup challenge app for simple leaderboard-based fitness competitions.
 
-The current MVP is a one-week pushup challenge:
+This project is no longer an active product. The app is being decommissioned because it is not being used anymore, but the repository is kept as a reference for the 2026 workout challenge prototype: what it did, how it was structured, and how to run it again if needed.
 
-- public challenge page
-- organizer-managed participants
-- challenge dates with stored week numbers
-- batch session submission
-- multiple sets per session
+## Screenshots
+
+![Desktop challenge leaderboard](docs/screenshots/challenge-leaderboard.png)
+
+## What The App Does
+
+The current app is a lightweight public pushup challenge tracker. It supports:
+
+- a public challenge page
+- active-or-latest challenge routing from the home page
+- challenge date windows with stored week numbers
+- participant selection and inline participant creation
+- batch session submission with multiple sets
 - total reps leaderboard
 - best single set leaderboard
+- recent session feed
+- empty states when no data source or challenge data exists
+
+The app is intentionally narrow. It was built around short weekly pushup challenges, not a full workout tracking product.
+
+## Current Status
+
+- Status: decommissioned / archived
+- Production use: no active usage expected
+- Maintenance posture: reference-only unless the project is revived
+- Data model: Supabase-backed challenge, participant, session, and set tables
+- Auth model: public honor-system submissions; no participant authentication
+
+If this project is revived, the main product decision would be whether to keep it as a public challenge board or rebuild it around authenticated personal workout history.
 
 ## Stack
 
@@ -18,14 +40,34 @@ The current MVP is a one-week pushup challenge:
 - React
 - Supabase
 - Tailwind CSS
+- TypeScript
 
-## What Works
+## App Flow
 
-- real challenge and participant reads from Supabase
-- persistent session submissions
-- mobile-first submission flow
-- live leaderboard recalculation after submit
-- explicit empty states when no real data exists
+The root route loads the active challenge from Supabase. If no challenge is currently active, it falls back to the latest challenge. Once a challenge is found, the home page redirects to:
+
+```text
+/challenges/[slug]
+```
+
+The challenge page renders the selected challenge, leaderboard data, logging form, best-set standings, and recent submissions.
+
+## Data Model
+
+The Supabase schema centers on:
+
+- `challenges`
+- `participants`
+- `sessions`
+- `sets`
+
+Weekly separation is stored on the challenge:
+
+- `sessions.challenge_id` links each session to one challenge
+- `challenges.week_number` identifies the week
+- `challenges.start_at` and `challenges.end_at` define the valid window
+
+There is no duplicate week number on `sessions`; the week is derived through the challenge relationship.
 
 ## Local Development
 
@@ -42,7 +84,7 @@ NEXT_PUBLIC_SUPABASE_URL=your-project-url
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
 ```
 
-The app also accepts `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY` if that is what your Supabase project exposes.
+The app also accepts `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY` or `NEXT_PUBLIC_SUPABASE_ANON_KEY` if that is what the Supabase project exposes.
 
 3. Run the app:
 
@@ -58,49 +100,31 @@ Run these SQL files in Supabase:
 
 1. `supabase/schema.sql`
 2. `supabase/submit-session-function.sql`
-3. `supabase/first-challenge.sql` if you want a starter challenge with Eric, Joe, and Nick
+3. `supabase/first-challenge.sql` if you want starter data with Eric, Joe, and Nick
 
-If you are starting from a clean database and run the current `schema.sql`, it already includes the session function. Running `submit-session-function.sql` separately is mainly useful when updating an older setup.
+For an existing database:
 
-If you already have an existing database and want inline participant creation from the submission form, run `supabase/get-or-create-participant-function.sql` once.
+- run `supabase/get-or-create-participant-function.sql` once to support inline participant creation
+- run `supabase/add-challenge-week-number.sql` once if the challenge table predates stored week numbers
 
-If you already have an older challenge table in Supabase, run `supabase/add-challenge-week-number.sql` once before reseeding so each challenge stores its `week_number`.
+## Resetting Data
 
-## Weekly Data Model
-
-Weekly separation already exists in the schema:
-
-- `sessions.challenge_id` links every session to exactly one challenge
-- `challenges.week_number` identifies the week
-- `challenges.start_at` and `challenges.end_at` define the valid time window
-
-That means you do not need a duplicate `week_number` column on `sessions`. The week is derived by joining each session to its challenge.
-
-## Resetting And Starting Fresh
-
-- Run `supabase/reset-all-data.sql` to wipe all participants, challenges, sessions, and sets
-- Run `supabase/first-challenge.sql` if you want the original starter seed again
-- Use `supabase/new-challenge-template.sql` as the template for creating the next weekly challenge row
+- `supabase/reset-all-data.sql` wipes participants, challenges, sessions, and sets
+- `supabase/first-challenge.sql` reseeds the original starter challenge
+- `supabase/new-challenge-template.sql` can be copied when creating another weekly challenge
 
 ## Project Structure
 
 - `src/app/` routes and API handlers
-- `src/components/` UI components
-- `src/lib/` domain logic, Supabase client, validation, rate limiting
-- `supabase/` schema and setup SQL
-- `docs/` product notes and MVP spec
+- `src/components/` challenge UI
+- `src/lib/` Supabase client, challenge data loading, validation, rate limiting, and leaderboard utilities
+- `supabase/` schema and SQL helpers
+- `docs/screenshots/` archived product screenshots
 
-## Current Constraints
+## Notes For Future Reference
 
-- public honor-system submissions
-- no participant auth yet
-- lightweight in-memory rate limiting only
-- one main challenge flow optimized for pushups
-
-## Next Likely Improvements
-
-- participant PIN or another simple anti-abuse layer
-- challenge-specific participant assignment
-- organizer/admin workflow
-- tighter public data exposure rules
-- frontend polish
+- Submissions are public and trust-based.
+- Rate limiting is lightweight and in-memory.
+- The app assumes one active or latest challenge as the primary surface.
+- The UI is mobile-first but the challenge page remains readable on desktop.
+- The screenshot data is representative sample data captured locally, not a guarantee of the current production database contents.
